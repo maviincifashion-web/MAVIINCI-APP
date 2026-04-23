@@ -25,6 +25,7 @@
     "expo-glass-effect": "55.0.9-canary-20260328-2049187",
     "expo-haptics": "^55.0.14",
     "expo-image": "55.0.7-canary-20260328-2049187",
+    "expo-image-picker": "55.0.15-canary-20260328-2049187",
     "expo-linking": "55.0.10-canary-20260328-2049187",
     "expo-router": "55.0.9-canary-20260328-2049187",
     "expo-splash-screen": "55.0.14-canary-20260328-2049187",

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { FirebaseService } from '../services/FirebaseService';
 import { ActionScanner } from '../components/ActionScanner';
 import { InfoScanner } from '../components/InfoScanner';
+import { ToggleableQR } from '../components/ToggleableQR';
 import { Colors } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
@@ -26,6 +27,14 @@ export const Dashboard = () => {
       return () => unsub();
     }
   }, [user]);
+
+  // Auto-update the open Safar Modal if the background data changes
+  useEffect(() => {
+    if (safar) {
+      const updatedSafar = orders.find(o => o.orderId === safar.orderId);
+      if (updatedSafar) setSafar(updatedSafar);
+    }
+  }, [orders]);
 
   const getStatusColor = (status: string) => {
     const s = status?.toUpperCase() || '';
@@ -70,7 +79,13 @@ export const Dashboard = () => {
           style={styles.tabContainer}
           contentContainerStyle={{ paddingRight: 20 }}
         >
-          {['FOUNDER', 'AGGREGATOR', 'STORE', 'MASTAN_HEAD', 'DELUXE_HEAD', 'TAILOR_MASTER', 'MACHINE_EMB', 'HAND_EMB', 'TAILOR_STITCH', 'CHECKER', 'FINISHER', 'PACKER', 'COURIER'].map(r => (
+          {[
+            'FOUNDER', 'AGGREGATOR', 'STORE', 
+            'MASTAN_HEAD', 'MASTAN_MASTER', 'MASTAN_STITCH', 'MASTAN_CHECKER', 'MASTAN_FINISHER',
+            'DELUXE_HEAD', 'DELUXE_MASTER', 'DELUXE_STITCH', 'DELUXE_CHECKER', 'DELUXE_FINISHER',
+            'MACHINE_EMB', 'HAND_EMB', 
+            'PACKER', 'COURIER'
+          ].map(r => (
             <TouchableOpacity 
               key={r} 
               onPress={() => setTestRole(r)} 
@@ -101,41 +116,38 @@ export const Dashboard = () => {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.sectionTitle}>Recent Orders</Text>
-        <View>
+        <Text style={styles.sectionTitle}>🚂 Live Railroad</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
           {orders.map(o => {
             const status = o.items?.[0]?.status || 'PENDING';
             return (
-              <View key={o.id} style={styles.card}>
-                <View style={styles.cardContent}>
-                  <View style={{flex:1}}>
-                    <View style={styles.orderLabelRow}>
-                      <Text style={styles.orderId}>#{o.orderId}</Text>
-                      <View style={[styles.statusBadge, {backgroundColor: getStatusColor(status) + '20'}]}>
-                        <View style={[styles.statusDot, {backgroundColor: getStatusColor(status)}]} />
-                        <Text style={[styles.statusText, {color: getStatusColor(status)}]}>{status.replace('_', ' ')}</Text>
-                      </View>
-                    </View>
-                    
-                    <TouchableOpacity onPress={() => setSafar(o)} style={styles.safarBtn}>
-                      <Text style={styles.safarBtnText}>VIEW JOURNEY MAP →</Text>
-                    </TouchableOpacity>
+              <View key={o.id} style={styles.trainCard}>
+                <View style={styles.trainHeader}>
+                  <Text style={styles.orderId}>#{o.orderId}</Text>
+                  <TouchableOpacity onPress={() => setSafar(o)} style={styles.safarIconBtn}>
+                    <Text style={styles.safarIconText}>🗺️</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.railContainer}>
+                  <View style={[styles.railLine, { backgroundColor: getStatusColor(status) }]} />
+                  <View style={[styles.trainNode, { borderColor: getStatusColor(status) }]}>
+                    <View style={[styles.trainInnerNode, { backgroundColor: getStatusColor(status) }]} />
                   </View>
+                </View>
+                
+                <View style={styles.trainContent}>
+                  <Text style={[styles.stationText, {color: getStatusColor(status)}]}>{status.replace('_', ' ')}</Text>
                   
-                  <View style={styles.qrContainer}>
-                    <QRCode 
-                      value={o.orderId} 
-                      size={110} 
-                      color="#fff"
-                      backgroundColor="transparent"
-                    />
-                    <Text style={styles.qrHint}>Scan to Update</Text>
+                  <View style={styles.qrContainerRail}>
+                    <ToggleableQR value={o.orderId} size={80} color="#fff" backgroundColor="transparent" />
                   </View>
+                  <Text style={styles.qrHint}>Tap 👁️ to reveal QR</Text>
                 </View>
               </View>
             );
           })}
-        </View>
+        </ScrollView>
       </ScrollView>
 
       <ActionScanner visible={actionScan} testRole={testRole} onClose={() => setActionScan(false)} />
@@ -159,9 +171,20 @@ export const Dashboard = () => {
                     {index < safar.items.length - 1 && <View style={styles.timelineConnector} />}
                   </View>
                   <View style={styles.timelineContent}>
-                    <Text style={styles.timelineName}>{i.name}</Text>
-                    <Text style={[styles.timelineStatus, {color: getStatusColor(i.status)}]}>{i.status}</Text>
-                    <Text style={styles.timelineHolder}>Holder: {i.holder || 'Not assigned'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timelineName}>{i.name}</Text>
+                      <Text style={[styles.timelineStatus, {color: getStatusColor(i.status)}]}>{i.status}</Text>
+                      <Text style={styles.timelineHolder}>Holder: {i.holder || 'Not assigned'}</Text>
+                      {i.branchOwner && <Text style={{color: '#888', fontSize: 10, marginTop: 4}}>Branch: {i.branchOwner}</Text>}
+                    </View>
+                    
+                    {/* Render Child QR for Master/Stitcher to scan (Hide if packed or beyond) */}
+                    {i.status !== 'PENDING' && i.status !== 'AGGREGATOR_ACCEPTED' && i.status !== 'FABRIC_ISSUED' && i.status !== 'FABRIC_RECEIVED' && 
+                     i.status !== 'PACKED_DONE' && i.status !== 'READY_COURIER' && i.status !== 'COMPLETED' && (
+                      <View style={{ marginLeft: 10 }}>
+                        <ToggleableQR value={i.childId} size={50} color="#000" backgroundColor="#fff" />
+                      </View>
+                    )}
                   </View>
                 </View>
               ))}
@@ -199,20 +222,24 @@ const styles = StyleSheet.create({
   scanBtn: { flex:1, padding:18, borderRadius:20, alignItems:'center', elevation:5, shadowColor:'#000', shadowOffset:{width:0, height:4}, shadowOpacity:0.3, shadowRadius:5 },
   btnT: { color:'#fff', fontWeight:'900', fontSize:13, letterSpacing:0.5 },
 
-  sectionTitle: { color:'#fff', fontSize:18, fontWeight:'bold', marginBottom:15 },
-  card: { backgroundColor:'#111', borderRadius:30, marginBottom:20, overflow:'hidden', borderWidth:1, borderColor:'#1a1a1a' },
-  cardContent: { padding:20, flexDirection:'row', alignItems:'center' },
-  orderLabelRow: { marginBottom:12 },
-  orderId: { color:'#fff', fontSize:22, fontWeight:'bold', marginBottom:6 },
-  statusBadge: { flexDirection:'row', alignItems:'center', alignSelf:'flex-start', paddingHorizontal:10, paddingVertical:4, borderRadius:12 },
-  statusDot: { width:6, height:6, borderRadius:3, marginRight:6 },
-  statusText: { fontSize:11, fontWeight:'900', letterSpacing:0.5 },
+  sectionTitle: { color:'#fff', fontSize:18, fontWeight:'bold', marginBottom:15, letterSpacing:1 },
   
-  safarBtn: { marginTop:10 },
-  safarBtnText: { color:'#3b82f6', fontSize:11, fontWeight:'700', letterSpacing:0.5 },
+  // RAILROAD STYLES
+  trainCard: { backgroundColor:'#111', borderRadius:20, marginRight:15, width: 220, overflow:'hidden', borderWidth:1, borderColor:'#1a1a1a', paddingBottom: 15 },
+  trainHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderColor: '#1a1a1a' },
+  orderId: { color:'#fff', fontSize:18, fontWeight:'900' },
+  safarIconBtn: { backgroundColor: '#1a1a1a', padding: 5, borderRadius: 8 },
+  safarIconText: { fontSize: 16 },
   
-  qrContainer: { padding:10, backgroundColor:'#1a1a1a', borderRadius:20, alignItems:'center', justifyContent:'center' },
-  qrHint: { color:'#444', fontSize:9, marginTop:8, fontWeight:'bold' },
+  railContainer: { flexDirection: 'row', alignItems: 'center', height: 40, marginVertical: 10 },
+  railLine: { position: 'absolute', top: '50%', left: 0, right: 0, height: 4, zIndex: 0 },
+  trainNode: { width: 24, height: 24, borderRadius: 12, borderWidth: 3, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginLeft: '50%', transform: [{translateX: -12}], zIndex: 1 },
+  trainInnerNode: { width: 10, height: 10, borderRadius: 5 },
+  
+  trainContent: { alignItems: 'center', paddingHorizontal: 15 },
+  stationText: { fontSize:12, fontWeight:'900', letterSpacing:0.5, marginBottom: 15, textAlign: 'center' },
+  qrContainerRail: { padding:8, backgroundColor:'#1a1a1a', borderRadius:15, alignItems:'center', justifyContent:'center' },
+  qrHint: { color:'#444', fontSize:10, marginTop:8, fontWeight:'bold' },
 
   modal: { flex:1, backgroundColor:'rgba(0,0,0,0.85)', justifyContent:'flex-end' },
   mContent: { backgroundColor:'#0a0a0a', height:'80%', padding:25, borderTopLeftRadius:40, borderTopRightRadius:40, borderWidth:1, borderColor:'#1a1a1a' },
@@ -224,7 +251,7 @@ const styles = StyleSheet.create({
   timelineLine: { width:20, alignItems:'center', marginRight:15 },
   timelineDot: { width:12, height:12, borderRadius:6, zIndex:1 },
   timelineConnector: { width:2, flex:1, backgroundColor:'#1a1a1a', marginVertical:4 },
-  timelineContent: { flex:1, backgroundColor:'#111', padding:15, borderRadius:20, borderWidth:1, borderColor:'#1a1a1a' },
+  timelineContent: { flex:1, backgroundColor:'#111', padding:15, borderRadius:20, borderWidth:1, borderColor:'#1a1a1a', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   timelineName: { color:'#fff', fontSize:16, fontWeight:'bold', marginBottom:4 },
   timelineStatus: { fontSize:12, fontWeight:'800', marginBottom:4 },
   timelineHolder: { color:'#666', fontSize:11 }

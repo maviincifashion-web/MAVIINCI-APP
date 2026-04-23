@@ -5,58 +5,46 @@ export const getNextStation = (currentStation: string, itemDetails: any) => {
   const emb = (itemDetails.embroideryType || 'NONE').toUpperCase();
 
   switch (s) {
-    // 1. Order -> AGGREGATOR
-    case STATIONS.PENDING: return STATIONS.AGGREGATOR_ACCEPTED;
+    // Phase 1: Parent QR
+    case STATIONS.PENDING: return STATIONS.AGGREGATOR_ACCEPTED;         // Station 1 -> 2
+    case STATIONS.AGGREGATOR_ACCEPTED: return STATIONS.FABRIC_ISSUED;   // Station 2 -> 3
+    case STATIONS.FABRIC_ISSUED: return STATIONS.FABRIC_RECEIVED;       // Station 3 -> 4
+    case STATIONS.FABRIC_RECEIVED: return STATIONS.AT_BRANCH_HEAD;      // Station 4 -> 5
     
-    // 2. AGGREGATOR -> STORE
-    case STATIONS.AGGREGATOR_ACCEPTED: return STATIONS.FABRIC_ISSUED;
+    // Phase 2: Split to Child QRs
+    case STATIONS.AT_BRANCH_HEAD: return STATIONS.CUTTING_DONE;         // Station 5 -> 6
     
-    // 3. STORE -> AGGREGATOR
-    case STATIONS.FABRIC_ISSUED: return STATIONS.FABRIC_RECEIVED;
-    
-    // 4. AGGREGATOR -> TAILOR HEAD
-    case STATIONS.FABRIC_RECEIVED: return STATIONS.AT_BRANCH_HEAD;
-    
-    // 5. TAILOR HEAD -> TAILOR MASTER
-    case STATIONS.AT_BRANCH_HEAD: return STATIONS.CUTTING_DONE;
-    
-    // 6. TAILOR MASTER -> EMBROIDERY DEPT
-    case STATIONS.CUTTING_DONE:
+    case STATIONS.CUTTING_DONE:                                         // Station 6 -> 7 (or 8)
       if (emb === 'MACHINE' || emb === 'BOTH') return STATIONS.EMB_MACHINE;
       if (emb === 'HAND') return STATIONS.EMB_HAND;
-      return STATIONS.READY_STITCH; // Go to Ready Stitch if no embroidery
+      return STATIONS.STITCH_DONE;
 
     case STATIONS.EMB_MACHINE:
       return (emb === 'BOTH') ? STATIONS.EMB_HAND : STATIONS.EMB_DONE;
 
     case STATIONS.EMB_HAND: return STATIONS.EMB_DONE;
+    case STATIONS.EMB_DONE: return STATIONS.STITCH_DONE;                // Station 7 -> 8
 
-    // 7. EMBROIDERY -> TAILOR STITCH
-    case STATIONS.EMB_DONE: return STATIONS.READY_STITCH;
-
-    // 8. TAILOR STITCH START -> FINISH
-    case STATIONS.READY_STITCH: return STATIONS.STITCH_DONE;
-
-    // 9. TAILOR STITCH -> CHECKER
-    case STATIONS.STITCH_DONE: return STATIONS.QUALITY_PASS;
-
-    // 10. CHECKER -> FINISHER
-    case STATIONS.QUALITY_PASS: return STATIONS.FINISH_DONE;
-
-    // 10. FINISHER -> AGGREGATOR
-    case STATIONS.FINISH_DONE: return STATIONS.PIECE_COLLECTED;
-
-    // 11. AGGREGATOR -> PACKER
-    case STATIONS.PIECE_COLLECTED: return STATIONS.READY_PACK;
-
-    case STATIONS.READY_PACK: return STATIONS.PACK_DONE;
-
-    // 12. PACKER -> AGGREGATOR
-    case STATIONS.PACK_DONE: return STATIONS.READY_COURIER;
-
-    // 13. AGGREGATOR -> COURIER
-    case STATIONS.READY_COURIER: return STATIONS.COMPLETED;
+    case STATIONS.STITCH_DONE: return STATIONS.QUALITY_PASS;            // Station 8 -> 9
+    case STATIONS.QUALITY_PASS: return STATIONS.BACK_AT_AG;             // Station 9 -> 10
+    
+    // Phase 3: The Merge
+    case STATIONS.BACK_AT_AG: return STATIONS.PIECE_COLLECTED;          // Station 10 -> 11
+    case STATIONS.PIECE_COLLECTED: return STATIONS.PACKED_PIECE;        // Station 11 -> 12 (Piece)
+    
+    // Station 12 (PACKED_DONE) is handled in FirebaseService via auto-promote
+    case STATIONS.PACKED_DONE: return STATIONS.READY_COURIER;           // Station 12 -> 13
+    case STATIONS.READY_COURIER: return STATIONS.COMPLETED;             // Station 13 -> 14
     
     default: return s;
+  }
+};
+
+// Rework logic
+export const getReworkStation = (target: string) => {
+  switch(target.toUpperCase()) {
+    case 'CUTTING': return STATIONS.AT_BRANCH_HEAD; // Fail to Master
+    case 'STITCHING': return STATIONS.CUTTING_DONE; // Fail to Stitcher (goes back to post-cutting state so stitcher can re-scan)
+    default: return STATIONS.CUTTING_DONE;
   }
 };

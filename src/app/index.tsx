@@ -24,8 +24,68 @@ const AppContent = () => {
     );
   }
 
-  // 2. Register UI removed for testing (Bypassed)
-  // 3. Approval check removed for testing (Bypassed)
+  // 2. Register UI
+  if (!user) {
+    return (
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.logo}>MAVIINCI JUNCTION</Text>
+        
+        <Text style={styles.label}>Select Your Role:</Text>
+        <View style={styles.roleGrid}>
+          {Object.keys(ROLES).map(r => (
+            <TouchableOpacity 
+              key={r} 
+              style={[styles.roleBtn, roleInput === r && styles.activeBtn]}
+              onPress={() => setRoleInput(r)}
+            >
+              <Text style={styles.roleText}>{r.replace('_', ' ')}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TextInput 
+          style={styles.input} 
+          placeholder="Aapka Naam" 
+          placeholderTextColor="#666"
+          value={nameInput} 
+          onChangeText={setNameInput} 
+        />
+        
+        {roleInput !== 'FOUNDER' && (
+          <TextInput 
+            style={styles.input} 
+            placeholder="Invite Code (Required)" 
+            placeholderTextColor="#666"
+            value={joinCode} 
+            onChangeText={setJoinCode} 
+          />
+        )}
+
+        <TouchableOpacity 
+          style={styles.mainBtn} 
+          onPress={() => {
+            if (!nameInput || !roleInput) Alert.alert("Hold up!", "Naam aur Role zaroori hai!");
+            else register(nameInput, roleInput, joinCode);
+          }}
+        >
+          <Text style={{fontWeight: '900', color: '#000', fontSize: 16, letterSpacing: 1}}>JOIN SYSTEM</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  // 3. Approval Check
+  if (user.status === 'pending') {
+    return (
+      <View style={styles.center}>
+        <Text style={{color: '#fff', fontSize: 20, fontWeight: 'bold'}}>Approval Pending ⏳</Text>
+        <Text style={styles.infoText}>Aapka account pending hai. Apne inviter se approve karwayein.</Text>
+        <TouchableOpacity style={[styles.mainBtn, {marginTop: 30, width: '100%'}]} onPress={logout}>
+          <Text style={{fontWeight: 'bold'}}>LOGOUT</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
 
   // 4. Main Views Controller

@@ -61,13 +61,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const newId = "id_" + Math.random().toString(36).substr(2, 9);
       const isF = role === 'FOUNDER';
       
-      // Founder ke liye nayi ID, Worker ke liye Join Code
       let cId = "";
+      let inviterId = null;
+      
       if (isF) {
         cId = "MAVI_" + Math.random().toString(36).substr(2, 4).toUpperCase();
       } else {
         if (!joinCode) throw new Error("Join Code (Invite Code) zaroori hai!");
-        cId = joinCode.toUpperCase().trim();
+        const code = joinCode.trim();
+        const inviterRef = doc(db, "erp_users", code);
+        const inviterSnap = await getDoc(inviterRef);
+        
+        if (!inviterSnap.exists()) {
+           throw new Error("Invalid Invite Code. Yeh user nahi mila.");
+        }
+        
+        const inviterData = inviterSnap.data();
+        cId = inviterData.companyId;
+        inviterId = code;
+        
+        // Optionally validate hierarchy here using HIERARCHY constant
       }
 
       const status = isF ? 'active' : 'pending';
@@ -78,13 +91,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         name: name.trim(), 
         role, 
         status, 
-        companyId: cId, 
+        companyId: cId,
+        inviterId: inviterId,
         createdAt: new Date().toISOString() 
       };
 
       await setDoc(doc(db, "erp_users", newId), userData);
       await AsyncStorage.setItem('erp_user_id', newId);
-      // Dashboard listener apne aap trigger ho jayega
     } catch (error: any) {
       Alert.alert("Registration Error", error.message);
     }
