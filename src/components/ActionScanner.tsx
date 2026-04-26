@@ -9,6 +9,7 @@ import { useAudioPlayer } from 'expo-audio';
 import { FirebaseService } from '../services/FirebaseService';
 import { useAuth } from '../context/AuthContext';
 import { STATIONS } from '../constants/Stations';
+import { checkPermission } from '../services/WorkflowEngine';
 
 export const ActionScanner = ({ onClose, testRole, visible }: any) => {
   const { user } = useAuth();
@@ -47,53 +48,6 @@ export const ActionScanner = ({ onClose, testRole, visible }: any) => {
   const userBranch = activeRole.split('_')[0]; // MASTAN / DELUXE / AGGREGATOR
 
   const hasRole = (rolePart: string) => activeRole.includes(rolePart) || activeRole === 'FOUNDER';
-
-  const checkPermission = (item: any, qr: string, allItems: any[] = []) => {
-    const s = item.status.toUpperCase();
-    const isChild = qr.includes('_');
-    const emb = (item.embroideryType || 'NONE').toUpperCase();
-
-    // --- 🏷️ STEP-BY-STEP WORKFLOW ENFORCEMENT ---
-    if (!isChild) {
-      if (s === STATIONS.PENDING) return hasRole('AGGREGATOR');
-      if (s === STATIONS.AGGREGATOR_ACCEPTED) return hasRole('STORE');
-      if (s === STATIONS.FABRIC_ISSUED) return hasRole('AGGREGATOR');
-      if (s === STATIONS.FABRIC_RECEIVED) return hasRole('HEAD');
-      
-      // 🛠️ FIX: Allow second Head to scan if ANY item is still available
-      if (hasRole('HEAD') && allItems.some(i => i.status === STATIONS.FABRIC_RECEIVED)) return true;
-
-      if (s === STATIONS.PACKED_DONE) return hasRole('AGGREGATOR');
-      if (s === STATIONS.READY_COURIER) return hasRole('COURIER');
-      return false;
-    }
-
-    // --- ✂️ PIECE ACTIONS (Child QR) ---
-    if (isChild) {
-      if (s === STATIONS.AT_BRANCH_HEAD) return hasRole('MASTER');
-      
-      // Step 6: EMBROIDERY (Dual-scan support: Start & Finish)
-      if (s === STATIONS.CUTTING_DONE) {
-         if (emb === 'MACHINE' || emb === 'BOTH') return hasRole('MACHINE');
-         if (emb === 'HAND') return hasRole('HAND');
-         return hasRole('STITCH'); // Direct to stitch if no embroidery
-      }
-      
-      if (s === STATIONS.EMB_MACHINE) return hasRole('MACHINE') || hasRole('HAND');
-      if (s === STATIONS.EMB_HAND) return hasRole('HAND');
-      if (s === STATIONS.EMB_DONE) return hasRole('STITCH');
-
-      // Step 8: TAILOR STITCH -> Step 9: CHECKER
-      if (s === STATIONS.STITCH_DONE) return hasRole('CHECKER');
-
-      // Step 9: QUALITY & FINISHING
-      if (s === STATIONS.QUALITY_PASS) return hasRole('FINISHER');
-      if (s === STATIONS.BACK_AT_AG) return hasRole('AGGREGATOR');
-      if (s === STATIONS.PIECE_COLLECTED) return hasRole('PACKER');
-      if (s === STATIONS.PACKED_PIECE) return hasRole('PACKER');
-    }
-    return false;
-  };
 
   const processScan = async (data: string, overrideStatus?: string) => {
     try {
@@ -148,7 +102,7 @@ export const ActionScanner = ({ onClose, testRole, visible }: any) => {
       const itemData = info.isParent ? info.items[0] : info;
       const isChild = data.includes('_');
 
-      if (!checkPermission(itemData, data, info.isParent ? info.items : [info])) {
+      if (!checkPermission(itemData, data, info.isParent ? info.items : [info], activeRole)) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         throw new Error(`Ghalt Role! Aapka role (${activeRole}) is waqt (${itemData.status}) scan nahi kar sakta.`);
       }

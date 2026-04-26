@@ -48,3 +48,39 @@ export const getReworkStation = (target: string) => {
     default: return STATIONS.CUTTING_DONE;
   }
 };
+
+export const checkPermission = (item: any, qr: string, allItems: any[] = [], activeRole: string) => {
+  const s = item.status.toUpperCase();
+  const isChild = qr.includes('_');
+  const emb = (item.embroideryType || 'NONE').toUpperCase();
+  const hasRole = (rolePart: string) => activeRole.includes(rolePart) || activeRole === 'FOUNDER';
+
+  if (!isChild) {
+    if (s === STATIONS.PENDING) return hasRole('AGGREGATOR');
+    if (s === STATIONS.AGGREGATOR_ACCEPTED) return hasRole('STORE');
+    if (s === STATIONS.FABRIC_ISSUED) return hasRole('AGGREGATOR');
+    if (s === STATIONS.FABRIC_RECEIVED) return hasRole('HEAD');
+    if (hasRole('HEAD') && allItems.some(i => i.status === STATIONS.FABRIC_RECEIVED)) return true;
+    if (s === STATIONS.PACKED_DONE) return hasRole('AGGREGATOR');
+    if (s === STATIONS.READY_COURIER) return hasRole('COURIER');
+    return false;
+  }
+
+  if (isChild) {
+    if (s === STATIONS.AT_BRANCH_HEAD) return hasRole('MASTER');
+    if (s === STATIONS.CUTTING_DONE) {
+       if (emb === 'MACHINE' || emb === 'BOTH') return hasRole('MACHINE');
+       if (emb === 'HAND') return hasRole('HAND');
+       return hasRole('STITCH');
+    }
+    if (s === STATIONS.EMB_MACHINE) return hasRole('MACHINE') || hasRole('HAND');
+    if (s === STATIONS.EMB_HAND) return hasRole('HAND');
+    if (s === STATIONS.EMB_DONE) return hasRole('STITCH');
+    if (s === STATIONS.STITCH_DONE) return hasRole('CHECKER');
+    if (s === STATIONS.QUALITY_PASS) return hasRole('FINISHER');
+    if (s === STATIONS.BACK_AT_AG) return hasRole('AGGREGATOR');
+    if (s === STATIONS.PIECE_COLLECTED) return hasRole('PACKER');
+    if (s === STATIONS.PACKED_PIECE) return hasRole('PACKER');
+  }
+  return false;
+};

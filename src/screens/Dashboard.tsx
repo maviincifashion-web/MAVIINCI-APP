@@ -6,6 +6,8 @@ import { FirebaseService } from '../services/FirebaseService';
 import { ActionScanner } from '../components/ActionScanner';
 import { InfoScanner } from '../components/InfoScanner';
 import { ToggleableQR } from '../components/ToggleableQR';
+import { checkPermission } from '../services/WorkflowEngine';
+import { SafarMapGraph } from '../components/SafarMapGraph';
 import { Colors } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
@@ -17,6 +19,7 @@ export const Dashboard = () => {
   const [actionScan, setActionScan] = useState(false);
   const [infoScan, setInfoScan] = useState(false);
   const [safar, setSafar] = useState<any>(null);
+  const [selectedOrderForQRs, setSelectedOrderForQRs] = useState<any>(null);
   const [testRole, setTestRole] = useState(user?.role || 'FOUNDER');
 
   useEffect(() => {
@@ -45,6 +48,32 @@ export const Dashboard = () => {
     if (s.includes('PASS') || s.includes('RECEIVED') || s.includes('COLLECTED')) return '#06b6d4'; // Validation/Receipt (Cyan)
     return '#6366f1'; // Default (Indigo)
   };
+
+  const filteredOrders = orders.filter(o => {
+    if (['FOUNDER', 'CO_FOUNDER', 'MANAGER', 'STORE', 'AGGREGATOR'].includes(testRole)) return true;
+
+    // Check if any item in the order is permissible for this role
+    const isParentActionable = checkPermission(o.items[0], o.orderId, o.items, testRole);
+    if (isParentActionable) return true;
+
+    const isAnyChildActionable = o.items.some((i: any) => checkPermission(i, i.childId, o.items, testRole));
+    if (isAnyChildActionable) {
+       const userBranch = testRole.split('_')[0];
+       const isGenericRole = ['MACHINE', 'HAND', 'WORKER', 'PACKER'].includes(userBranch);
+       
+       if (isGenericRole) return true;
+       // For branch-specific roles, they must match branchOwner or branchOwner isn't set yet (they can claim it)
+       return o.items.some((i: any) => i.branchOwner === userBranch || !i.branchOwner);
+    }
+    
+    // Always show orders if their branch owns any piece, so they can track progress
+    const userBranch = testRole.split('_')[0];
+    const isGenericRole = ['MACHINE', 'HAND', 'WORKER', 'PACKER'].includes(userBranch);
+    if (!isGenericRole) {
+        return o.items.some((i: any) => i.branchOwner === userBranch);
+    }
+    return false;
+  });
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#fff" /></View>;
 
@@ -98,12 +127,12 @@ export const Dashboard = () => {
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statVal}>{orders.length}</Text>
-            <Text style={styles.statLab}>Active Orders</Text>
+            <Text style={styles.statVal}>{filteredOrders.length}</Text>
+            <Text style={styles.statLab}>Workspace Orders</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statVal}>{orders.filter(o => o.items?.[0]?.status === 'DONE').length}</Text>
-            <Text style={styles.statLab}>Completed</Text>
+            <Text style={styles.statVal}>{orders.filter(o => o.items?.[0]?.status === 'COMPLETED').length}</Text>
+            <Text style={styles.statLab}>Global Completed</Text>
           </View>
         </View>
 
@@ -116,10 +145,21 @@ export const Dashboard = () => {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.sectionTitle}>🚂 Live Railroad</Text>
+        <Text style={styles.sectionTitle}>🚂 Workspace Queue</Text>
+        {filteredOrders.length === 0 && <Text style={{color: '#888', fontStyle: 'italic', marginBottom: 20}}>No orders require action in this workspace right now.</Text>}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
-          {orders.map(o => {
-            const status = o.items?.[0]?.status || 'PENDING';
+          {filteredOrders.map(o => {
+            const allCompleted = o.items.every((i:any) => i.status === 'COMPLETED');
+            const allPacked = o.items.every((i:any) => i.status === 'PACKED_DONE' || i.status === 'READY_COURIER' || i.status === 'COMPLETED');
+            const status = allCompleted ? 'COMPLETED' : allPacked ? 'PACKED_DONE' : o.items?.[0]?.status || 'PENDING';
+            
+            const totalItems = o.items.length;
+            const itemsPackedOrDone = o.items.filter((i:any) => ['PACKED_PIECE', 'PACKED_DONE', 'READY_COURIER', 'COMPLETED'].includes(i.status)).length;
+            const itemsAtMyBranch = o.items.filter((i:any) => {
+                const userBranch = testRole.split('_')[0];
+                return i.branchOwner === userBranch;
+            }).length;
+
             return (
               <View key={o.id} style={styles.trainCard}>
                 <View style={styles.trainHeader}>
@@ -137,12 +177,33 @@ export const Dashboard = () => {
                 </View>
                 
                 <View style={styles.trainContent}>
-                  <Text style={[styles.stationText, {color: getStatusColor(status)}]}>{status.replace('_', ' ')}</Text>
+                  <Text style={[styles.stationText, {color: getStatusColor(status)}]}>{status.replace(/_/g, ' ')}</Text>
                   
-                  <View style={styles.qrContainerRail}>
-                    <ToggleableQR value={o.orderId} size={80} color="#fff" backgroundColor="transparent" />
-                  </View>
-                  <Text style={styles.qrHint}>Tap 👁️ to reveal QR</Text>
+                  {o.items[0].status === 'FABRIC_RECEIVED' || o.items[0].status === 'AT_BRANCH_HEAD' || o.items[0].status === 'CUTTING_DONE' ? (
+                     <View style={{backgroundColor: '#1a1a1a', padding: 8, borderRadius: 8, marginBottom: 10, width: '100%'}}>
+                       <Text style={{color: '#fff', fontSize: 10, textAlign: 'center'}}>Items at Branch: {itemsAtMyBranch}</Text>
+                     </View>
+                  ) : (
+                     <View style={{backgroundColor: '#1a1a1a', padding: 8, borderRadius: 8, marginBottom: 10, width: '100%'}}>
+                       <Text style={{color: '#fff', fontSize: 10, textAlign: 'center'}}>Progress: {itemsPackedOrDone}/{totalItems} Finished</Text>
+                     </View>
+                  )}
+
+                  {['PENDING', 'AGGREGATOR_ACCEPTED', 'FABRIC_ISSUED', 'FABRIC_RECEIVED', 'PACKED_DONE', 'READY_COURIER', 'COMPLETED'].includes(status) ? (
+                    <View style={{alignItems: 'center'}}>
+                      <View style={styles.qrContainerRail}>
+                        <ToggleableQR value={o.orderId} size={80} color="#fff" backgroundColor="transparent" />
+                      </View>
+                      <Text style={styles.qrHint}>Tap 👁️ to reveal Parent QR</Text>
+                    </View>
+                  ) : (
+                    <View style={{alignItems: 'center'}}>
+                      <TouchableOpacity style={[styles.qrContainerRail, { paddingVertical: 15 }]} onPress={() => setSelectedOrderForQRs(o)}>
+                        <Text style={{ fontSize: 32 }}>📱</Text>
+                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold', marginTop: 8, textAlign: 'center' }}>Tap for{'\n'}Piece QRs</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               </View>
             );
@@ -153,39 +214,52 @@ export const Dashboard = () => {
       <ActionScanner visible={actionScan} testRole={testRole} onClose={() => setActionScan(false)} />
       <InfoScanner visible={infoScan} onClose={() => setInfoScan(false)} />
 
-      <Modal visible={!!safar} transparent animationType="slide">
-        <View style={styles.modal}>
-          <View style={styles.mContent}>
-            <View style={styles.mHeader}>
-              <Text style={styles.mTitle}>🚂 Safar Map: #{safar?.orderId}</Text>
-              <TouchableOpacity onPress={() => setSafar(null)} style={styles.mCloseX}>
-                <Text style={{color:'#666', fontSize:24}}>×</Text>
+      <Modal visible={!!safar} animationType="slide" statusBarTranslucent>
+        <SafeAreaView style={styles.safarFullPage}>
+          <StatusBar barStyle="light-content" backgroundColor="#020617" />
+          {/* Sticky Header */}
+          <View style={styles.safarHeader}>
+            <TouchableOpacity onPress={() => setSafar(null)} style={styles.safarBackBtn}>
+              <Text style={styles.safarBackIcon}>←</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.safarTitle}>🚂 Safar Map</Text>
+              <Text style={styles.safarSubtitle}>Order #{safar?.orderId}</Text>
+            </View>
+          </View>
+
+          {/* Full Page Graph */}
+          <SafarMapGraph order={safar} />
+        </SafeAreaView>
+      </Modal>
+
+      {/* CHILD QRs MODAL */}
+      <Modal visible={!!selectedOrderForQRs} transparent animationType="fade">
+        <View style={styles.qrModalOverlay}>
+          <View style={styles.qrModalContent}>
+            <View style={styles.qrModalHeader}>
+              <View>
+                <Text style={styles.qrModalTitle}>Piece QRs</Text>
+                <Text style={styles.qrModalSub}>Order #{selectedOrderForQRs?.orderId}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedOrderForQRs(null)} style={styles.qrModalClose}>
+                <Text style={{color:'#fff', fontSize:20}}>×</Text>
               </TouchableOpacity>
             </View>
-            
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {safar?.items.map((i:any, index:number) => (
-                <View key={index} style={styles.timelineItem}>
-                  <View style={styles.timelineLine}>
-                    <View style={[styles.timelineDot, {backgroundColor: getStatusColor(i.status)}]} />
-                    {index < safar.items.length - 1 && <View style={styles.timelineConnector} />}
+
+            <ScrollView contentContainerStyle={styles.qrGrid}>
+              {selectedOrderForQRs?.items?.map((item: any, idx: number) => (
+                <View key={item.childId || idx} style={styles.childQrCard}>
+                  <Text style={styles.childQrName} numberOfLines={1}>{item.name || `Piece ${idx + 1}`}</Text>
+                  <Text style={styles.childQrId}>#{item.childId}</Text>
+                  
+                  <View style={{ marginTop: 10, padding: 5, backgroundColor: '#fff', borderRadius: 10 }}>
+                    <ToggleableQR value={item.childId} size={90} color="#000" backgroundColor="#fff" />
                   </View>
-                  <View style={styles.timelineContent}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.timelineName}>{i.name}</Text>
-                      <Text style={[styles.timelineStatus, {color: getStatusColor(i.status)}]}>{i.status}</Text>
-                      <Text style={styles.timelineHolder}>Holder: {i.holder || 'Not assigned'}</Text>
-                      {i.branchOwner && <Text style={{color: '#888', fontSize: 10, marginTop: 4}}>Branch: {i.branchOwner}</Text>}
-                    </View>
-                    
-                    {/* Render Child QR for Master/Stitcher to scan (Hide if packed or beyond) */}
-                    {i.status !== 'PENDING' && i.status !== 'AGGREGATOR_ACCEPTED' && i.status !== 'FABRIC_ISSUED' && i.status !== 'FABRIC_RECEIVED' && 
-                     i.status !== 'PACKED_DONE' && i.status !== 'READY_COURIER' && i.status !== 'COMPLETED' && (
-                      <View style={{ marginLeft: 10 }}>
-                        <ToggleableQR value={i.childId} size={50} color="#000" backgroundColor="#fff" />
-                      </View>
-                    )}
-                  </View>
+                  
+                  <Text style={[styles.childQrStatus, { color: getStatusColor(item.status) }]}>
+                    {item.status.replace(/_/g, ' ')}
+                  </Text>
                 </View>
               ))}
             </ScrollView>
@@ -241,18 +315,24 @@ const styles = StyleSheet.create({
   qrContainerRail: { padding:8, backgroundColor:'#1a1a1a', borderRadius:15, alignItems:'center', justifyContent:'center' },
   qrHint: { color:'#444', fontSize:10, marginTop:8, fontWeight:'bold' },
 
-  modal: { flex:1, backgroundColor:'rgba(0,0,0,0.85)', justifyContent:'flex-end' },
-  mContent: { backgroundColor:'#0a0a0a', height:'80%', padding:25, borderTopLeftRadius:40, borderTopRightRadius:40, borderWidth:1, borderColor:'#1a1a1a' },
-  mHeader: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:30 },
-  mTitle: { color:'#fff', fontSize:22, fontWeight:'900' },
-  mCloseX: { width:40, height:40, justifyContent:'center', alignItems:'center' },
-
-  timelineItem: { flexDirection:'row', marginBottom:25 },
-  timelineLine: { width:20, alignItems:'center', marginRight:15 },
-  timelineDot: { width:12, height:12, borderRadius:6, zIndex:1 },
-  timelineConnector: { width:2, flex:1, backgroundColor:'#1a1a1a', marginVertical:4 },
-  timelineContent: { flex:1, backgroundColor:'#111', padding:15, borderRadius:20, borderWidth:1, borderColor:'#1a1a1a', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timelineName: { color:'#fff', fontSize:16, fontWeight:'bold', marginBottom:4 },
-  timelineStatus: { fontSize:12, fontWeight:'800', marginBottom:4 },
-  timelineHolder: { color:'#666', fontSize:11 }
+  // SAFAR MAP FULL PAGE
+  safarFullPage: { flex: 1, backgroundColor: '#020617' },
+  safarHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  safarBackBtn: { width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  safarBackIcon: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  safarTitle: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 0.3 },
+  safarSubtitle: { color: '#64748b', fontSize: 12, fontWeight: '600', marginTop: 2 },
+  
+  // CHILD QRs MODAL
+  qrModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 },
+  qrModalContent: { backgroundColor: '#111', borderRadius: 24, padding: 20, maxHeight: '80%', borderWidth: 1, borderColor: '#222' },
+  qrModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#222' },
+  qrModalTitle: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  qrModalSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  qrModalClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' },
+  qrGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 20 },
+  childQrCard: { width: '48%', backgroundColor: '#0a0a0a', borderRadius: 16, padding: 12, alignItems: 'center', marginBottom: 15, borderWidth: 1, borderColor: '#1a1a1a' },
+  childQrName: { color: '#fff', fontSize: 13, fontWeight: 'bold', textAlign: 'center' },
+  childQrId: { color: '#666', fontSize: 10, marginTop: 2 },
+  childQrStatus: { fontSize: 10, fontWeight: 'bold', marginTop: 10, textAlign: 'center' }
 });
