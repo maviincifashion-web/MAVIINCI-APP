@@ -6,7 +6,8 @@ import { FirebaseService } from '../services/FirebaseService';
 import { ActionScanner } from '../components/ActionScanner';
 import { InfoScanner } from '../components/InfoScanner';
 import { ToggleableQR } from '../components/ToggleableQR';
-import { checkPermission } from '../services/WorkflowEngine';
+import { checkPermission, getSummaryStatus } from '../services/WorkflowEngine';
+import { STATIONS } from '../constants/Stations';
 import { SafarMapGraph } from '../components/SafarMapGraph';
 import { Colors } from '../constants/theme';
 
@@ -149,16 +150,20 @@ export const Dashboard = () => {
         {filteredOrders.length === 0 && <Text style={{color: '#888', fontStyle: 'italic', marginBottom: 20}}>No orders require action in this workspace right now.</Text>}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
           {filteredOrders.map(o => {
-            const allCompleted = o.items.every((i:any) => i.status === 'COMPLETED');
-            const allPacked = o.items.every((i:any) => i.status === 'PACKED_DONE' || i.status === 'READY_COURIER' || i.status === 'COMPLETED');
-            const status = allCompleted ? 'COMPLETED' : allPacked ? 'PACKED_DONE' : o.items?.[0]?.status || 'PENDING';
+            const status = getSummaryStatus(o.items);
             
             const totalItems = o.items.length;
-            const itemsPackedOrDone = o.items.filter((i:any) => ['PACKED_PIECE', 'PACKED_DONE', 'READY_COURIER', 'COMPLETED'].includes(i.status)).length;
-            const itemsAtMyBranch = o.items.filter((i:any) => {
-                const userBranch = testRole.split('_')[0];
-                return i.branchOwner === userBranch;
-            }).length;
+            const itemsPackedOrDone = o.items.filter((i:any) => [STATIONS.PACKED_PIECE, STATIONS.PACKED_DONE, STATIONS.READY_COURIER, STATIONS.COMPLETED].includes(i.status)).length;
+            const hasUnclaimed = o.items.some((i:any) => i.status === STATIONS.FABRIC_RECEIVED);
+            const hasClaimed = o.items.some((i:any) => i.status !== STATIONS.FABRIC_RECEIVED && i.status !== STATIONS.PENDING && i.status !== STATIONS.AGGREGATOR_ACCEPTED && i.status !== STATIONS.FABRIC_ISSUED);
+
+            const userBranch = testRole.split('_')[0];
+            const itemsAtMyBranch = o.items.filter((i:any) => i.branchOwner === userBranch).length;
+            
+            const showParentQR = [STATIONS.PENDING, STATIONS.AGGREGATOR_ACCEPTED, STATIONS.FABRIC_ISSUED, STATIONS.FABRIC_RECEIVED, STATIONS.PACKED_DONE, STATIONS.READY_COURIER, STATIONS.COMPLETED].includes(status) || 
+                                 (testRole.includes('HEAD') && hasUnclaimed);
+            
+            const showPieceButton = hasClaimed && ![STATIONS.PACKED_DONE, STATIONS.READY_COURIER, STATIONS.COMPLETED].includes(status);
 
             return (
               <View key={o.id} style={styles.trainCard}>
@@ -189,21 +194,30 @@ export const Dashboard = () => {
                      </View>
                   )}
 
-                  {['PENDING', 'AGGREGATOR_ACCEPTED', 'FABRIC_ISSUED', 'FABRIC_RECEIVED', 'PACKED_DONE', 'READY_COURIER', 'COMPLETED'].includes(status) ? (
-                    <View style={{alignItems: 'center'}}>
-                      <View style={styles.qrContainerRail}>
-                        <ToggleableQR value={o.orderId} size={80} color="#fff" backgroundColor="transparent" />
+                  <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    {showParentQR && (
+                      <View style={{alignItems: 'center'}}>
+                        <View style={styles.qrContainerRail}>
+                          <ToggleableQR value={o.orderId} size={80} color="#fff" backgroundColor="transparent" />
+                        </View>
+                        <Text style={styles.qrHint}>{testRole.includes('HEAD') && hasClaimed ? 'Parent QR' : 'Tap 👁️ reveal'}</Text>
                       </View>
-                      <Text style={styles.qrHint}>Tap 👁️ to reveal Parent QR</Text>
-                    </View>
-                  ) : (
-                    <View style={{alignItems: 'center'}}>
-                      <TouchableOpacity style={[styles.qrContainerRail, { paddingVertical: 15 }]} onPress={() => setSelectedOrderForQRs(o)}>
-                        <Text style={{ fontSize: 32 }}>📱</Text>
-                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold', marginTop: 8, textAlign: 'center' }}>Tap for{'\n'}Piece QRs</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                    )}
+
+                    {showPieceButton && (
+                      <View style={{alignItems: 'center'}}>
+                        <TouchableOpacity 
+                          style={[styles.qrContainerRail, { paddingVertical: showParentQR ? 12 : 15, width: showParentQR ? 80 : 100 }]} 
+                          onPress={() => setSelectedOrderForQRs(o)}
+                        >
+                          <Text style={{ fontSize: showParentQR ? 24 : 32 }}>📱</Text>
+                          <Text style={{ color: '#fff', fontSize: 8, fontWeight: 'bold', marginTop: 4, textAlign: 'center' }}>
+                            {showParentQR ? 'PIECES' : 'Tap for\nPiece QRs'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
             );

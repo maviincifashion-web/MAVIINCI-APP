@@ -5,14 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 
-// ─── WORKFLOW STATIONS ─────────────────────────────────────────
-const STATION_ORDER = [
-  'PENDING', 'AGGREGATOR_ACCEPTED', 'FABRIC_ISSUED', 'FABRIC_RECEIVED', 'AT_BRANCH_HEAD',
-  'CUTTING_DONE',
-  ['EMB_MACHINE', 'EMB_HAND', 'EMB_DONE'],
-  'STITCH_DONE', 'QUALITY_PASS', 'BACK_AT_AG', 'PIECE_COLLECTED', 'PACKED_PIECE',
-  'PACKED_DONE', 'READY_COURIER', 'COMPLETED'
-];
+import { STATION_ORDER, getStationIndex } from '../services/WorkflowEngine';
 
 const PHASE1_LABELS = ['ORDER CREATED', 'AGGREGATOR ASSIGNED', 'FABRIC REQUESTED', 'FABRIC RECEIVED', 'TAILOR HEAD ASSIGNED'];
 const PHASE2_LABELS = ['CUTTING', 'EMBROIDERY', 'STITCHING', 'QUALITY CHECK', 'FINISHING', 'RECEIVED'];
@@ -20,12 +13,6 @@ const PHASE3_LABELS = ['PACKING DONE', 'DISPATCHED'];
 
 const PHASE1_ICONS = ['📋', '🤝', '🧵', '📦', '✂️'];
 const PHASE3_ICONS = ['📦', '🚚'];
-
-const getStationIndex = (status: string) => {
-  return STATION_ORDER.findIndex(s =>
-    Array.isArray(s) ? s.includes(status.toUpperCase()) : s === status.toUpperCase()
-  );
-};
 
 // ─── DESIGN TOKENS ─────────────────────────────────────────────
 const NODE_SIZE = 30;
